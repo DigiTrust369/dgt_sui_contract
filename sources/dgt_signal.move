@@ -8,6 +8,12 @@ module vault::digitrust {
     use sui::object::{Self, UID, ID};
     use std::string::{String};
 
+    const INVALID_INDEX: u64 = 999999999;
+    const ERROR_UNAUTHORIZED: u64 = 1;
+    const ERROR_NOT_INITIALIZED: u64 = 2;
+    const ERROR_USER_EXISTS: u64 = 3;
+    const ERROR_USER_DOES_NOT_EXIST: u64 = 4;
+
     /// Name of the coin. By convention, this type has the same name as its parent module
     /// and has no fields. The full type of the coin defined by this module will be `COIN<DIGITRUST>`.
     struct DIGITRUST has drop {}
@@ -45,6 +51,44 @@ module vault::digitrust {
         performance_fee: u64,
         version: u64,
         chain_allocation: String
+    }
+
+    struct Signal has key {
+        id: UID,
+        users: vector<User>,
+    }
+
+    struct User has store, drop, copy {
+        addr: address,
+        name: String,
+        bio: String,
+        pfp: String,
+        posts: vector<Post>,
+        portfolios: vector<Portfolio>
+    }
+
+    struct Portfolio has store, drop, copy{
+        symbol: String, 
+        chain: String, 
+        entry: String, 
+        take_profit: String,
+        cut_loss: String, 
+        expire_time: u64,
+    }
+
+    struct Post has store, drop, copy {
+        content: String,
+        image: String,
+        comments: vector<Comment>,
+        like_count: u64,
+        time: u64,
+    }
+
+    struct Comment has store, drop, copy {
+        addr: address,
+        content: String,
+        like_count: u64,
+        time: u64,
     }
 
     public entry fun generate_vault_strategy(
@@ -91,6 +135,132 @@ module vault::digitrust {
         coin::burn(treasury_cap, coin);
 
         //making connection as the core_relation between 
+    }
+
+    /** User profile **/
+    public entry fun create_user_profile(account: &signer, name: String, bio: String, pfp: String) acquires Signal {
+        assert!(exists<Signal>(MODULE_ADDRESS), ERROR_NOT_INITIALIZED);
+
+        let signer_addr = signer::address_of(account);
+
+        let dgt_signal = borrow_global_mut<Signal>(MODULE_ADDRESS);
+
+        let n = 0;
+
+        let users_count = vector::length(&dgt_signal.users);
+
+        while(n < users_count) {
+            let addr_of_nth_user = vector::borrow(&mut dgt_signal.users, n).addr;
+            assert!(addr_of_nth_user != signer_addr, ERROR_USER_EXISTS);
+            n = n + 1;
+        };
+
+        let new_user = User {
+            addr: signer_addr,
+            name: name,
+            bio: bio,
+            pfp: pfp,
+            posts: vector[],
+            portfolios: vector[]
+        };
+
+        vector::push_back(&mut dgt_signal.users, new_user);
+    }
+
+    public entry fun update_user_profile(account: &signer, name: String, bio: String, pfp: String) acquires Signal {
+        assert!(exists<Signal>(MODULE_ADDRESS), ERROR_NOT_INITIALIZED);
+
+        let signer_addr = signer::address_of(account);
+
+        let dgt_signal = borrow_global_mut<Signal>(MODULE_ADDRESS);
+
+        let n = 0;
+
+        let users_count = vector::length(&dgt_signal.users);
+
+        while(n < users_count) {
+            let nth_user = vector::borrow_mut(&mut dgt_signal.users, n);
+
+            if(nth_user.addr == signer_addr) {
+                nth_user.name = name;
+                nth_user.bio = bio;
+                nth_user.pfp = pfp;
+                return
+            };
+
+            n = n + 1;
+        };
+
+        abort ERROR_USER_DOES_NOT_EXIST
+    }
+
+    public entry fun make_post(account: &signer, content: String, image: String) acquires Signal {
+        assert!(exists<Signal>(MODULE_ADDRESS), ERROR_NOT_INITIALIZED);
+
+        let signer_addr = signer::address_of(account);
+
+        let dgt_signal = borrow_global_mut<Signal>(MODULE_ADDRESS);
+
+        let n = 0;
+
+        let users_count = vector::length(&dgt_signal.users);
+
+        while(n < users_count) {
+            let nth_user = vector::borrow_mut(&mut dgt_signal.users, n);
+
+            if(nth_user.addr == signer_addr) {
+                let post = Post {
+                    content: content,
+                    image: image,
+                    comments: vector[],
+                    like_count: 0,
+                    time: timestamp::now_seconds(),
+                };
+
+                vector::push_back(&mut nth_user.posts, post);
+
+                return
+            };
+
+            n = n + 1;
+        };
+
+        abort ERROR_USER_DOES_NOT_EXIST
+    }
+
+    public entry fun share_portfolio(account: &signer, symbol: String, chain: String, entry: String, take_profit: String, cut_loss: String) acquires Signal {
+        assert!(exists<Signal>(MODULE_ADDRESS), ERROR_NOT_INITIALIZED);
+
+        let signer_addr = signer::address_of(account);
+
+        let dgt_signal = borrow_global_mut<Signal>(MODULE_ADDRESS);
+
+        let n = 0;
+
+        let portfolio_count = vector::length(&dgt_signal.users);
+
+        while(n < portfolio_count) {
+            let nth_user = vector::borrow_mut(&mut dgt_signal.users, n);
+
+            if(nth_user.addr == signer_addr) {
+                let portfolio = Portfolio {
+                    symbol: symbol,
+                    chain: chain,
+                    entry: entry,
+                    take_profit: take_profit,
+                    cut_loss: cut_loss,
+                    expire_time: 24
+                };
+
+                vector::push_back(&mut nth_user.portfolios, portfolio);
+
+                return
+            };
+
+            n = n + 1;
+        };
+
+        abort ERROR_USER_DOES_NOT_EXIST
     }
 
     #[test_only]
